@@ -12,6 +12,7 @@ use prelude::v1::*;
 
 use cell::UnsafeCell;
 use sys::sync as ffi;
+use mem;
 
 pub struct Mutex { inner: UnsafeCell<ffi::SRWLOCK> }
 
@@ -55,5 +56,37 @@ impl Mutex {
     #[inline]
     pub unsafe fn destroy(&self) {
         // ...
+    }
+}
+
+pub struct ReentrantMutex { inner: UnsafeCell<ffi::CRITICAL_SECTION> }
+
+unsafe impl Send for ReentrantMutex {}
+unsafe impl Sync for ReentrantMutex {}
+
+impl ReentrantMutex {
+    pub unsafe fn new() -> ReentrantMutex {
+        let section: ffi::CRITICAL_SECTION = mem::uninitialized();
+        ffi::InitializeCriticalSection(section);
+        ReentrantMutex {
+            inner: UnsafeCell { value: section }
+        }
+    }
+
+    pub unsafe fn lock(&self) {
+        ffi::EnterCriticalSection(self.inner.get());
+    }
+
+    #[inline]
+    pub unsafe fn try_lock(&self) -> bool {
+        ffi::TryEnterCriticalSection(self.inner.get()) != 0
+    }
+
+    pub unsafe fn unlock(&self) {
+        ffi::LeaveCriticalSection(self.inner.get());
+    }
+
+    pub unsafe fn destroy(&self) {
+        ffi::DeleteCriticalSection(self.inner.get());
     }
 }
